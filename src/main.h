@@ -70,10 +70,15 @@ typedef enum {
 #define OPAMP1_VINPIO0_VIDEO_GEN_IN_GPIO_Port GPIOA
 #define OPAMP1_VINPIO2_VIDEO_IN_Pin LL_GPIO_PIN_7
 #define OPAMP1_VINPIO2_VIDEO_IN_GPIO_Port GPIOA
-#define SPI2_CS_Pin LL_GPIO_PIN_14
+// RTC6705 is driven by software, but using the same pins that would be used if it was driven in hardware.
+// MISO and MOSI can be connected to each other via a 330R resistor, and then MISO is connected to the RTC6705's SPIDATA
+// signal, in this configuration either hardware or software can be used, clocking out 32 bits instead of the usual 25.
+#define SPI2_CS_Pin LL_GPIO_PIN_12
 #define SPI2_CS_GPIO_Port GPIOB
 #define SPI2_SCK_Pin LL_GPIO_PIN_13
 #define SPI2_SCK_GPIO_Port GPIOB
+#define SPI2_MISO_Pin LL_GPIO_PIN_14
+#define SPI2_MISO_GPIO_Port GPIOB
 #define SPI2_MOSI_Pin LL_GPIO_PIN_15
 #define SPI2_MOSI_GPIO_Port GPIOB
 #define LED_STATE_Pin LL_GPIO_PIN_6
