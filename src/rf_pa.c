@@ -112,22 +112,23 @@ void rf_pa_init(void)
     LL_GPIO_Init(PA_ON_GPIO_Port, &GPIO_InitStruct);
 #endif
 
-    rf_pa_enable(false); // keep PA off at boot
+    rf_pa_disable(); // keep PA off at boot
 }
 
-void rf_pa_enable(bool on)
+void rf_pa_enable(void)
 {
-    if (on) {
-        dac_ch2_write_mv(g_vref_mv);
+    dac_ch2_write_mv(g_vref_mv);
 #if defined(PA_RTC76401)
-        LL_GPIO_SetOutputPin(PA_ON_GPIO_Port, PA_ON_Pin);
+    LL_GPIO_SetOutputPin(PA_ON_GPIO_Port, PA_ON_Pin);
 #endif
-    } else {
+}
+
+void rf_pa_disable(void)
+{
 #if defined(PA_RTC76401)
-        LL_GPIO_ResetOutputPin(PA_ON_GPIO_Port, PA_ON_Pin);
+    LL_GPIO_ResetOutputPin(PA_ON_GPIO_Port, PA_ON_Pin);
 #endif
-        dac_ch2_write_mv(0u);
-    }
+    dac_ch2_write_mv(0u);
 }
 
 void rf_pa_set_vref_mv(uint16_t mv)
@@ -162,7 +163,7 @@ uint16_t rf_pa_set_power_level(rf_pa_power_t level)
         rf_detector = 0;
         pa_control_i = 0;
         pa_control_last_deviation = 0;
-        rf_pa_enable(false);
+        rf_pa_disable();
         return 0;
     }
 
@@ -174,7 +175,7 @@ uint16_t rf_pa_set_power_level(rf_pa_power_t level)
 
     uint16_t mv = get_calibration_mv(level, freq);
     g_vref_mv = mv; /* rf_pa_enable() below writes this out */
-    rf_pa_enable(true);
+    rf_pa_enable();
 
     if (rf_detector_target != 0) {
         /* rf_pa_loop() takes over from here and trims g_vref_mv */

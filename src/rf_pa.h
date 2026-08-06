@@ -38,7 +38,8 @@ typedef struct {
 extern rf_pa_cal_t g_rf_pa_table[RF_PA_PWR_COUNT]; // index 0 (OFF) unused
 
 void rf_pa_init(void);
-void rf_pa_enable(bool on);
+void rf_pa_enable(void);
+void rf_pa_disable(void);
 uint16_t rf_pa_read_vdet_mv(void);
 uint16_t rf_pa_get_vref_mv(void);
 void rf_pa_set_vref_mv(uint16_t mv);

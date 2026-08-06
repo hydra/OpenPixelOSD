@@ -103,10 +103,6 @@ static void rtc6705_write_reg(uint8_t addr4, uint32_t data20);
 static uint32_t rtc6705_read_reg(uint8_t addr4);
 static bool rtc6705_detect(void);
 
-__attribute__((weak)) void rtc6705_hook_ext_pa_enable(bool on)
-{
-    rf_pa_enable(on);
-}
 __attribute__((weak)) void rtc6705_hook_delay_us(uint32_t us)
 {
     HAL_Delay(us);
@@ -378,7 +374,9 @@ uint32_t rtc6705_set_frequency(uint32_t freq_mhz)
     }
 
     // Gate external PA while (re)programming to avoid OOB emissions
-    rtc6705_hook_ext_pa_enable(false);
+#if defined(USE_PA)
+    rf_pa_disable();
+#endif
 
     // Ensure R is set (write every time is fine, but it's static; ok to re-write)
     rtc6705_write_reg(RTC6705_REG_SYN_A, (RTC6705_R_DIV & SYNA_R_MASK));
@@ -396,7 +394,9 @@ uint32_t rtc6705_set_frequency(uint32_t freq_mhz)
     rtc6705_wait_state_stable(RTC6705_LOCK_STABLE_US, RTC6705_LOCK_WAIT_TIMEOUT_US);
 
     // Re-enable external PA
-    rtc6705_hook_ext_pa_enable(true);
+#if defined(USE_PA)
+    rf_pa_enable();
+#endif
 
     g_freq_mhz_last = freq_mhz;
 
