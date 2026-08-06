@@ -31,6 +31,7 @@ typedef enum {
 
 typedef struct {
     uint16_t mW;                                 // nominal target, informational only
+    bool     ext_pa_enable;                      // does this level engage the external boost PA stage (e.g. RTC76401)? no-op on boards without one (PA_GENERIC)
     uint16_t calibration[RF_PA_CAL_FREQ_POINTS];  // DAC mV per freq breakpoint (open-loop / PID setpoint)
     uint16_t detector[RF_PA_CAL_FREQ_POINTS];     // target raw VDET ADC reading per freq breakpoint; 0 = no closed loop for this level
 } rf_pa_cal_t;
@@ -38,6 +39,10 @@ typedef struct {
 extern rf_pa_cal_t g_rf_pa_table[RF_PA_PWR_COUNT]; // index 0 (OFF) unused
 
 void rf_pa_init(void);
+/* Applies the DAC bias AND external boost PA state for the currently
+ * active level (see rf_pa_set_power_level()) -- boost only asserts if
+ * g_rf_pa_table[g_active_level].ext_pa_enable is true, it is NOT
+ * unconditional just because a non-OFF level is active. */
 void rf_pa_enable(void);
 void rf_pa_disable(void);
 /* Re-applies whatever enable/disable state was last commanded via

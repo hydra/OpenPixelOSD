@@ -35,7 +35,7 @@ static const uint16_t g_cal_freq_mhz[RF_PA_CAL_FREQ_POINTS] = {
  * every single one -- that is almost certainly what caused a large
  * current draw the moment any non-OFF level was requested.
  *
- * All four levels below now default to the SAME safe starting point,
+ * All four levels below now default to the SAME safe DAC starting point,
  * 3200mV (Vgs=-100mV, comfortably above the 1V max threshold -> Q2
  * should be at or very near cutoff). This is NOT a working calibration --
  * every level will produce roughly the same (minimal) output until you
@@ -43,13 +43,21 @@ static const uint16_t g_cal_freq_mhz[RF_PA_CAL_FREQ_POINTS] = {
  * bench current the whole time. Move in small steps (e.g. 50mV) and
  * expect the transition from "off" to "conducting" to happen over a
  * fairly narrow band given how low this device's threshold is -- don't
- * assume the useful range spans anywhere near VDD down to 0V. */
+ * assume the useful range spans anywhere near VDD down to 0V.
+ *
+ * ext_pa_enable: RTC76401 is a fixed ~29dB gain block (see its datasheet)
+ * with no meaningful intermediate bias state -- it should only be engaged
+ * for levels that actually need that much gain. 20mW is RTC6705's own
+ * output alone (ext_pa_enable=false); 100/200/800mW engage the boost
+ * stage. Getting this wrong (unconditionally enabling it for any non-OFF
+ * level) is what caused a ~750mA jump on the very first non-pit-mode
+ * level previously. */
 rf_pa_cal_t g_rf_pa_table[RF_PA_PWR_COUNT] = {
-    [RF_PA_PWR_OFF]   = { 0,   {0,0,0,0,0,0,0}, {0,0,0,0,0,0,0} },
-    [RF_PA_PWR_20mW]  = { 20,  {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
-    [RF_PA_PWR_100mW] = { 100, {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
-    [RF_PA_PWR_200mW] = { 200, {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
-    [RF_PA_PWR_800mW] = { 800, {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
+    [RF_PA_PWR_OFF]   = { 0,   false, {0,0,0,0,0,0,0},       {0,0,0,0,0,0,0} },
+    [RF_PA_PWR_20mW]  = { 20,  false, {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
+    [RF_PA_PWR_100mW] = { 100, true,  {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
+    [RF_PA_PWR_200mW] = { 200, true,  {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
+    [RF_PA_PWR_800mW] = { 800, true,  {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
 };
 
 #ifndef PA_CONTROL_Kp
@@ -141,19 +149,35 @@ void rf_pa_init(void)
  * near-maximum bias into RTC6705's PAOUT1 continuously. */
 #define VTX_BIAS_OFF_MV 3300u
 
-void rf_pa_enable(void)
+/* External/boost PA GPIO control only -- does NOT touch the DAC bias.
+ * No-op on boards without a separate boost-enable pin (e.g. PA_GENERIC). */
+static inline void rf_pa_boost_on(void)
 {
-    dac_ch2_write_mv(g_vref_mv);
 #if defined(PA_RTC76401)
     LL_GPIO_SetOutputPin(PA_ON_GPIO_Port, PA_ON_Pin);
 #endif
 }
 
-void rf_pa_disable(void)
+static inline void rf_pa_boost_off(void)
 {
 #if defined(PA_RTC76401)
     LL_GPIO_ResetOutputPin(PA_ON_GPIO_Port, PA_ON_Pin);
 #endif
+}
+
+void rf_pa_enable(void)
+{
+    dac_ch2_write_mv(g_vref_mv);
+    if (g_active_level != RF_PA_PWR_OFF && g_rf_pa_table[g_active_level].ext_pa_enable) {
+        rf_pa_boost_on();
+    } else {
+        rf_pa_boost_off();
+    }
+}
+
+void rf_pa_disable(void)
+{
+    rf_pa_boost_off();
     dac_ch2_write_mv(VTX_BIAS_OFF_MV);
 }
 
