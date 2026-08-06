@@ -5,32 +5,42 @@
  *
  * Differences from targets/generic.h:
  *   - ADC_PA_VDET moves from PB11 to PA4 (RTC76401 pin 19, VPD).
- *     PA4 = ADC2_IN17, confirmed -- NOT reachable from ADC1. adc.c handles
- *     this: on this target, ADC_CH_PA_VDET is read via a dedicated ADC2
- *     single-channel DMA path (see adc2_vdet_init() in adc.c) instead of
- *     ADC1's regular sequence.
+ *     PA4 = ADC2_IN17, confirmed -- NOT reachable from ADC1. adc.c gates
+ *     on USE_ADC2 (defined below) to bring up a dedicated ADC2
+ *     single-channel DMA path for it instead of ADC1's regular sequence.
  *   - PB11 is unconnected on this board -- ADC_RESERVED already covers
  *     "unused analog input" duties, PB11 doesn't need its own entry.
  *   - New PA_ON_Pin/PA_ON_GPIO_Port: RTC76401 VREF enable (PB10), a fast
  *     binary switch per the RTC76401 datasheet -- NOT a PWM/analog control.
- *     Named PA_ON_* (not RTC76401-specific) to match the existing
- *     #ifdef PA_ON_GPIO_Port convention already present in rf_pa.c.
+ *     rf_pa.c gates its use on #if defined(PA_RTC76401).
  */
 #ifndef TARGET_GENERIC_VTX_PA_RTC76401_H
 #define TARGET_GENERIC_VTX_PA_RTC76401_H
 
-/* Feature flag: code outside targets/ must gate on THIS, never on a
- * target/board name. This header is the single place that turns it on;
- * a future board sharing the same RTC76401 PA stage just needs to
- * #define PA_RTC76401 in its own header too. */
+/* Feature flags. Downstream code (adc.c, rf_pa.c, ...) gates on these,
+ * never on a target/board name -- see targets/target.h.
+ *   PA_RTC76401 -- this board's specific PA type: RTC76401 external PA,
+ *                  DAC1_OUT2 bias into RTC6705's PAOUT1, separate enable
+ *                  GPIO (PA_ON_*), VPD detector on its own ADC.
+ *   USE_PA      -- this board has *some* PA needing bias/enable/detector
+ *                  control. Set alongside every concrete PA feature.
+ *   USE_ADC2    -- this board's PA_VDET detector needs a second ADC
+ *                  instance (PA4 = ADC2_IN17, not reachable from ADC1).
+ *                  Independent of which PA feature is active in principle
+ *                  -- adc.c only checks USE_ADC2 to decide whether to
+ *                  bring up ADC2, never PA_RTC76401 directly. */
 #define PA_RTC76401
+#define USE_PA
+#define USE_ADC2
 
 // see adc.c - adc_init()
 typedef enum {
   ADC_CH_RESERVED = 0, // reserved
-  ADC_CH_PA_VDET = 1, // RTC76401 VPD (pin 19) via PA4
-  ADC_CH_TEMP = 2, // internal temperature sensor
-  ADC_CH_VREF_INT  = 3, // internal VREFINT
+#if defined(USE_PA)
+  ADC_CH_PA_VDET, // RTC76401 VPD (pin 19) via PA4 -- only exists if a PA feature is enabled
+#endif
+  ADC_CH_TEMP, // internal temperature sensor
+  ADC_CH_VREF_INT, // internal VREFINT
   ADC_CH_COUNT
 } adc_ch_t;
 
@@ -71,10 +81,12 @@ typedef enum {
 #define ADC_RESERVED_GPIO_Port GPIOB
 #define ADC_RESERVED_Channel LL_ADC_CHANNEL_12
 
+#if defined(USE_PA)
 /* VPD on PA4 -- RTC76401 pin 19. ADC2_IN17 (confirmed), see adc.c. */
 #define ADC_PA_VDET_Pin LL_GPIO_PIN_4
 #define ADC_PA_VDET_GPIO_Port GPIOA
 #define ADC_PA_VDET_Channel LL_ADC_CHANNEL_17
+#endif
 
 //
 // Reserved pins for future features
@@ -92,9 +104,12 @@ typedef enum {
 #define FDCAN1_RX_Pin LL_GPIO_PIN_8
 #define FDCAN1_RX_GPIO_Port GPIOB
 
+#if defined(USE_PA)
 #define RF_VBIAS_DAC1_OUT2_Pin LL_GPIO_PIN_5
 #define RF_VBIAS_DAC1_OUT2_GPIO_Port GPIOA
+#endif
 
+#if defined(PA_RTC76401)
 /* RTC76401 VREF enable (PB10) -- fast binary switch, not PWM/analog.
  * See rf_pa.c: code there gates on #if defined(PA_RTC76401), not on
  * these pin macros -- PA_ON_Pin/PA_ON_GPIO_Port are only ever referenced
@@ -102,6 +117,7 @@ typedef enum {
  * stage, PA_RTC76401 undefined) never see them at all. */
 #define PA_ON_Pin LL_GPIO_PIN_10
 #define PA_ON_GPIO_Port GPIOB
+#endif
 
 #define USER_KEY_Pin LL_GPIO_PIN_13
 #define USER_KEY_GPIO_Port GPIOC

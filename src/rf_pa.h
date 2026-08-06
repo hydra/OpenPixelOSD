@@ -4,6 +4,15 @@
  */
 #ifndef RF_PA_H
 #define RF_PA_H
+
+/* Entire file is gated on USE_PA (set by a board header alongside its PA
+ * feature, e.g. PA_GENERIC or PA_RTC76401 -- see targets/). A board with
+ * an RTC6705 but no PA of any kind simply never defines USE_PA, and this
+ * header then declares nothing at all -- not even empty stubs. Callers
+ * (main.c, vtx_msp.c) must guard their own use of these symbols the same
+ * way. */
+#if defined(USE_PA)
+
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -39,4 +48,5 @@ uint16_t rf_pa_set_power_level(rf_pa_power_t level);
  * PID loop against the active level's detector target, when it has one. */
 void rf_pa_loop(void);
 
+#endif //USE_PA
 #endif //RF_PA_H

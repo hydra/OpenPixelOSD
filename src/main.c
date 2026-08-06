@@ -74,8 +74,10 @@ int main (void)
         printf("rtc6705 detected\r\n");
         rtc6705_set_frequency(5880); // TODO: remove after implementing configuration saving to flash
 
+#if defined(USE_PA)
         rf_pa_init();
         rf_pa_set_power_level(RF_PA_PWR_20mW);
+#endif
     }
 #endif
 
@@ -86,7 +88,7 @@ int main (void)
         debug_print_loop();
         logo_timeout_check();
 
-#if defined(BUILD_VARIANT_VTX)
+#if defined(BUILD_VARIANT_VTX) && defined(USE_PA)
         rf_pa_loop();
 #endif
 

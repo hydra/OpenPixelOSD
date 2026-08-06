@@ -9,12 +9,27 @@
 #ifndef TARGET_GENERIC_H
 #define TARGET_GENERIC_H
 
+/* Feature flags. Downstream code (adc.c, rf_pa.c, ...) gates on these,
+ * never on a target/board name -- see targets/target.h.
+ *   USE_PA      -- this board has *some* PA stage needing bias/enable/
+ *                  detector control. Set by every concrete PA feature
+ *                  (PA_GENERIC here, PA_RTC76401 in the other header).
+ *   PA_GENERIC  -- this board's specific PA type: DAC1_OUT2 bias (PA5),
+ *                  VDET on PB11/ADC1, no separate PA-enable GPIO.
+ * A board with an RTC6705 but no PA of any kind simply omits both --
+ * ADC_CH_PA_VDET then doesn't exist in adc_ch_t below, and rf_pa.c/.h
+ * compile to nothing (see their own USE_PA guards). */
+#define PA_GENERIC
+#define USE_PA
+
 // see adc.c - adc_init()
 typedef enum {
   ADC_CH_RESERVED = 0, // reserved
-  ADC_CH_PA_VDET = 1, // rf pa vdet signal
-  ADC_CH_TEMP = 2, // internal temperature sensor
-  ADC_CH_VREF_INT  = 3, // internal VREFINT
+#if defined(USE_PA)
+  ADC_CH_PA_VDET, // rf pa vdet signal -- only exists if a PA feature is enabled
+#endif
+  ADC_CH_TEMP, // internal temperature sensor
+  ADC_CH_VREF_INT, // internal VREFINT
   ADC_CH_COUNT
 } adc_ch_t;
 
@@ -64,9 +79,11 @@ typedef enum {
 #define ADC_RESERVED_Pin LL_GPIO_PIN_1
 #define ADC_RESERVED_GPIO_Port GPIOB
 #define ADC_RESERVED_Channel LL_ADC_CHANNEL_12
+#if defined(USE_PA)
 #define ADC_PA_VDET_Pin LL_GPIO_PIN_11
 #define ADC_PA_VDET_GPIO_Port GPIOB
 #define ADC_PA_VDET_Channel LL_ADC_CHANNEL_14
+#endif
 
 //
 // Reserved pins for future features
@@ -89,8 +106,10 @@ typedef enum {
 #define FDCAN1_RX_GPIO_Port GPIOB
 
 // If RF PA VBIAS is expanded, then DAC1_OUT1 can be used to control the VBIAS voltage.
+#if defined(USE_PA)
 #define RF_VBIAS_DAC1_OUT2_Pin LL_GPIO_PIN_5
 #define RF_VBIAS_DAC1_OUT2_GPIO_Port GPIOA
+#endif
 
 // USER_KEY only used in GPIO init code, currently only used by developers.
 #define USER_KEY_Pin LL_GPIO_PIN_13

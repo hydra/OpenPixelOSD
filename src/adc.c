@@ -11,39 +11,57 @@
 
 #define USE_VREF_IN_CHANNEL         1
 
-/* PA4 (RTC76401 VPD, see targets/generic_vtx_pa_rtc76401.h) is ADC2_IN17 --
- * not reachable from ADC1, which is otherwise the only ADC this file uses.
- * Gating is on the PA_RTC76401 FEATURE flag (defined by whichever board
- * header needs it), never on a target/board name -- see targets/target.h
- * and targets/generic_vtx_pa_rtc76401.h.
+/* This file gates purely on feature flags (USE_PA, USE_ADC2), never on a
+ * target/board name -- see targets/target.h and the board headers under
+ * targets/ for where those flags get set.
  *
- * adc_read_raw() itself has exactly one code path regardless of feature
- * state: it looks ADC_CH_* up in g_adc_ch_map[], a compile-time table of
+ * USE_PA   -- ADC_CH_PA_VDET exists in adc_ch_t at all (see target headers).
+ * USE_ADC2 -- PA_VDET's detector isn't reachable from ADC1 on this board,
+ *             so a second ADC instance is brought up for it. Independent
+ *             of which PA feature is active -- adc.c doesn't care why
+ *             ADC2 is needed, only that it is.
+ *
+ * adc_read_raw() has exactly one code path regardless of feature state:
+ * it looks ADC_CH_* up in g_adc_ch_map[], a compile-time table of
  * {buffer, offset} pairs. Only the TABLE CONTENTS differ per feature
- * state (which buffer/offset a channel resolves to) -- the lookup logic
- * doesn't branch. Peripheral bring-up in adc_init() legitimately does
- * still differ (different hardware needs different init), but the read
- * path does not. */
+ * state -- the lookup logic doesn't branch. Peripheral bring-up in
+ * adc_init() legitimately does still differ (different hardware needs
+ * different init), but the read path does not. */
 
 typedef struct {
     volatile uint16_t *buf;
     uint8_t offset;
 } adc_ch_map_t;
 
-#if defined(PA_RTC76401)
-#define ADC1_SEQ_LEN 3 /* RESERVED, TEMP, VREFINT -- PA_VDET is not on ADC1 here */
-static volatile uint16_t g_adc1_dma_buf[ADC1_SEQ_LEN];
-static volatile uint16_t g_adc2_dma_buf[1]; /* PA_VDET, single channel, own ADC+DMA */
+/* ADC1's sequence length depends on whether PA_VDET rides along on it
+ * (USE_PA && !USE_ADC2) or lives elsewhere (no PA, or PA_VDET on ADC2).
+ * ADC2's length is 0 unless USE_ADC2 pulls it in -- currently PA_VDET is
+ * its only possible consumer, but the length is tracked independently of
+ * that so a future non-PA reason to want ADC2 isn't blocked on PA_VDET
+ * existing. */
+#if defined(USE_PA) && !defined(USE_ADC2)
+#define ADC1_SEQ_LEN 4 /* RESERVED, PA_VDET, TEMP, VREFINT */
 #else
-#define ADC1_SEQ_LEN ADC_CH_COUNT
+#define ADC1_SEQ_LEN 3 /* RESERVED, TEMP, VREFINT */
+#endif
+
+#if defined(USE_ADC2)
+#define ADC2_SEQ_LEN 1 /* PA_VDET, currently the sole ADC2 consumer */
+#else
+#define ADC2_SEQ_LEN 0
+#endif
+
 static volatile uint16_t g_adc1_dma_buf[ADC1_SEQ_LEN];
+#if defined(USE_ADC2)
+static volatile uint16_t g_adc2_dma_buf[ADC2_SEQ_LEN];
 #endif
 
 /* Compile-time map: adc_ch_t -> (buffer, offset). Rebuilt per feature
  * state below; adc_read_raw() consumes it uniformly either way. */
 static const adc_ch_map_t g_adc_ch_map[ADC_CH_COUNT] = {
     [ADC_CH_RESERVED] = { g_adc1_dma_buf, 0 },
-#if defined(PA_RTC76401)
+#if defined(USE_PA)
+#if defined(USE_ADC2)
     [ADC_CH_PA_VDET]  = { g_adc2_dma_buf, 0 },
     [ADC_CH_TEMP]     = { g_adc1_dma_buf, 1 },
     [ADC_CH_VREF_INT] = { g_adc1_dma_buf, 2 },
@@ -52,9 +70,13 @@ static const adc_ch_map_t g_adc_ch_map[ADC_CH_COUNT] = {
     [ADC_CH_TEMP]     = { g_adc1_dma_buf, 2 },
     [ADC_CH_VREF_INT] = { g_adc1_dma_buf, 3 },
 #endif
+#else
+    [ADC_CH_TEMP]     = { g_adc1_dma_buf, 1 },
+    [ADC_CH_VREF_INT] = { g_adc1_dma_buf, 2 },
+#endif
 };
 
-#if defined(PA_RTC76401)
+#if defined(USE_ADC2)
 /* ADC2, single channel, free-running via its own DMA channel --
  * independent of ADC1's sequence below. */
 static void adc2_vdet_init(void)
@@ -76,7 +98,7 @@ static void adc2_vdet_init(void)
     LL_DMA_SetMemorySize(DMA1, LL_DMA_CHANNEL_5, LL_DMA_MDATAALIGN_HALFWORD);
     LL_DMA_SetPeriphAddress(DMA1, LL_DMA_CHANNEL_5, (uint32_t)&ADC2->DR);
     LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_5, (uint32_t)g_adc2_dma_buf);
-    LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_5, 1);
+    LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_5, ADC2_SEQ_LEN);
 
     ADC_InitStruct.Resolution = LL_ADC_RESOLUTION_12B;
     ADC_InitStruct.DataAlignment = LL_ADC_DATA_ALIGN_RIGHT;
@@ -139,17 +161,21 @@ void adc_init(void)
     LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_ADC12);
 
     LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOB);
+#if defined(USE_PA)
     LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA); // needed if ADC_PA_VDET_Pin is on GPIOA (PA4 board variant)
+#endif
 
     GPIO_InitStruct.Pin = ADC_RESERVED_Pin;
     GPIO_InitStruct.Mode = LL_GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
     LL_GPIO_Init(ADC_RESERVED_GPIO_Port, &GPIO_InitStruct);
 
+#if defined(USE_PA)
     GPIO_InitStruct.Pin = ADC_PA_VDET_Pin;
     GPIO_InitStruct.Mode = LL_GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
     LL_GPIO_Init(ADC_PA_VDET_GPIO_Port, &GPIO_InitStruct);
+#endif
 
     /* ADC1 DMA Init */
 
@@ -180,10 +206,10 @@ void adc_init(void)
     ADC_InitStruct.LowPowerMode = LL_ADC_LP_MODE_NONE;
     LL_ADC_Init(ADC1, &ADC_InitStruct);
     ADC_REG_InitStruct.TriggerSource = LL_ADC_REG_TRIG_SOFTWARE;
-#if defined(PA_RTC76401)
-    ADC_REG_InitStruct.SequencerLength = LL_ADC_REG_SEQ_SCAN_ENABLE_3RANKS;
-#else
+#if ADC1_SEQ_LEN == 4
     ADC_REG_InitStruct.SequencerLength = LL_ADC_REG_SEQ_SCAN_ENABLE_4RANKS;
+#else
+    ADC_REG_InitStruct.SequencerLength = LL_ADC_REG_SEQ_SCAN_ENABLE_3RANKS;
 #endif
     ADC_REG_InitStruct.SequencerDiscont = LL_ADC_REG_SEQ_DISCONT_DISABLE;
     ADC_REG_InitStruct.ContinuousMode = LL_ADC_REG_CONV_CONTINUOUS;
@@ -196,10 +222,10 @@ void adc_init(void)
     ADC_CommonInitStruct.Multimode = LL_ADC_MULTI_INDEPENDENT;
     LL_ADC_CommonInit(__LL_ADC_COMMON_INSTANCE(ADC1), &ADC_CommonInitStruct);
     ADC_INJ_InitStruct.TriggerSource = LL_ADC_INJ_TRIG_SOFTWARE;
-#if defined(PA_RTC76401)
-    ADC_INJ_InitStruct.SequencerLength = LL_ADC_INJ_SEQ_SCAN_ENABLE_3RANKS;
-#else
+#if ADC1_SEQ_LEN == 4
     ADC_INJ_InitStruct.SequencerLength = LL_ADC_INJ_SEQ_SCAN_ENABLE_4RANKS;
+#else
+    ADC_INJ_InitStruct.SequencerLength = LL_ADC_INJ_SEQ_SCAN_ENABLE_3RANKS;
 #endif
     ADC_INJ_InitStruct.SequencerDiscont = LL_ADC_INJ_SEQ_DISCONT_DISABLE;
     ADC_INJ_InitStruct.TrigAuto = LL_ADC_INJ_TRIG_FROM_GRP_REGULAR;
@@ -223,15 +249,15 @@ void adc_init(void)
         wait_loop_index--;
     }
 
-#if defined(PA_RTC76401)
-    LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_ENABLE_3RANKS);
-#else
+#if ADC1_SEQ_LEN == 4
     LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_ENABLE_4RANKS);
+#else
+    LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_ENABLE_3RANKS);
 #endif
 
     // ADC1 rank order below determines g_adc1_dma_buf[] layout. This must
     // stay consistent with the offsets baked into g_adc_ch_map[] above --
-    // both are keyed off the same PA_RTC76401 feature flag so they can't
+    // both are driven off the same USE_PA/USE_ADC2 flags so they can't
     // drift independently.
 
     /** Configure Regular Channel */
@@ -244,7 +270,7 @@ void adc_init(void)
     LL_ADC_SetChannelSamplingTime(ADC1, ADC_RESERVED_Channel, LL_ADC_SAMPLINGTIME_92CYCLES_5);
     LL_ADC_SetChannelSingleDiff(ADC1, ADC_RESERVED_Channel, LL_ADC_SINGLE_ENDED);
 
-#if !defined(PA_RTC76401)
+#if defined(USE_PA) && !defined(USE_ADC2)
     /** Configure Regular Channel */
     LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, ADC_PA_VDET_Channel);
     LL_ADC_SetChannelSamplingTime(ADC1, ADC_PA_VDET_Channel, LL_ADC_SAMPLINGTIME_92CYCLES_5);
@@ -257,23 +283,23 @@ void adc_init(void)
 #endif
 
     /** Configure Regular Channel */
-    LL_ADC_REG_SetSequencerRanks(ADC1, ADC1_SEQ_LEN >= 4 ? LL_ADC_REG_RANK_3 : LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_TEMPSENSOR_ADC1);
+    LL_ADC_REG_SetSequencerRanks(ADC1, ADC1_SEQ_LEN == 4 ? LL_ADC_REG_RANK_3 : LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_TEMPSENSOR_ADC1);
     LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_TEMPSENSOR_ADC1, LL_ADC_SAMPLINGTIME_247CYCLES_5);
     LL_ADC_SetChannelSingleDiff(ADC1, LL_ADC_CHANNEL_TEMPSENSOR_ADC1, LL_ADC_SINGLE_ENDED);
     LL_ADC_SetCommonPathInternalCh(__LL_ADC_COMMON_INSTANCE(ADC1), LL_ADC_PATH_INTERNAL_TEMPSENSOR | LL_ADC_PATH_INTERNAL_VREFINT);
 
     /** Configure Injected Channel */
-    LL_ADC_INJ_SetSequencerRanks(ADC1, ADC1_SEQ_LEN >= 4 ? LL_ADC_INJ_RANK_3 : LL_ADC_INJ_RANK_2, LL_ADC_CHANNEL_TEMPSENSOR_ADC1);
+    LL_ADC_INJ_SetSequencerRanks(ADC1, ADC1_SEQ_LEN == 4 ? LL_ADC_INJ_RANK_3 : LL_ADC_INJ_RANK_2, LL_ADC_CHANNEL_TEMPSENSOR_ADC1);
     LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_TEMPSENSOR_ADC1, LL_ADC_SAMPLINGTIME_247CYCLES_5);
     LL_ADC_SetChannelSingleDiff(ADC1, LL_ADC_CHANNEL_TEMPSENSOR_ADC1, LL_ADC_SINGLE_ENDED);
 
     /** Configure Regular Channel */
-    LL_ADC_REG_SetSequencerRanks(ADC1, ADC1_SEQ_LEN >= 4 ? LL_ADC_REG_RANK_4 : LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_VREFINT);
+    LL_ADC_REG_SetSequencerRanks(ADC1, ADC1_SEQ_LEN == 4 ? LL_ADC_REG_RANK_4 : LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_VREFINT);
     LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_VREFINT, LL_ADC_SAMPLINGTIME_247CYCLES_5);
     LL_ADC_SetChannelSingleDiff(ADC1, LL_ADC_CHANNEL_VREFINT, LL_ADC_SINGLE_ENDED);
 
     /** Configure Injected Channel */
-    LL_ADC_INJ_SetSequencerRanks(ADC1, ADC1_SEQ_LEN >= 4 ? LL_ADC_INJ_RANK_4 : LL_ADC_INJ_RANK_3, LL_ADC_CHANNEL_VREFINT);
+    LL_ADC_INJ_SetSequencerRanks(ADC1, ADC1_SEQ_LEN == 4 ? LL_ADC_INJ_RANK_4 : LL_ADC_INJ_RANK_3, LL_ADC_CHANNEL_VREFINT);
     LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_VREFINT, LL_ADC_SAMPLINGTIME_247CYCLES_5);
     LL_ADC_SetChannelSingleDiff(ADC1, LL_ADC_CHANNEL_VREFINT, LL_ADC_SINGLE_ENDED);
 
@@ -308,7 +334,7 @@ void adc_init(void)
 
     LL_ADC_REG_StartConversion(ADC1);
 
-#if defined(PA_RTC76401)
+#if defined(USE_ADC2)
     adc2_vdet_init();
 #endif
 }

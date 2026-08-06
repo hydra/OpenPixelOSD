@@ -2,11 +2,15 @@
 /**
  * Copyright (C) 2025 Vitaliy N <vitaliy.nimych@gmail.com>
  */
-#include "rf_pa.h"
 #include "main.h"
+#include "rf_pa.h"
 #include "vtx_msp.h"
 #include <stdbool.h>
 #include <string.h>
+
+/* Entire rest of this file is gated on USE_PA -- see rf_pa.h. On a board
+ * with no PA feature enabled, this translation unit compiles to nothing. */
+#if defined(USE_PA)
 
 /* Frequency breakpoints the calibration/detector tables are indexed
  * against. TODO: match these to your actual calibration sweep points. */
@@ -213,3 +217,5 @@ void rf_pa_loop(void)
         pa_control_last_deviation = deviation;
     }
 }
+
+#endif //USE_PA

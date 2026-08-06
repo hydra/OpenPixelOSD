@@ -141,16 +141,20 @@ static void vtx_apply_hw(const vtx_config_t *cfg)
         rtc6705_set_power(RTC6705_PA_3dBm);
         rtc6705_allow_power_writes(false);
 
+#if defined(USE_PA)
         /* Pit: minimal radiation — disable external RF Power Amplifier */
         rf_pa_set_power_level(RF_PA_PWR_OFF);
+#endif
     } else {
         /* Set internal RTC6705 PA power */
         rtc6705_allow_power_writes(true);
         rtc6705_set_power(map_power_to_rtc6705(cfg->power));
         rtc6705_allow_power_writes(false);
 
+#if defined(USE_PA)
         /* Set external RF Power Amplifier */
         rf_pa_set_power_level(cfg->power+1);
+#endif
     }
 }
 
