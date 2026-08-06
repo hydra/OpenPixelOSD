@@ -17,13 +17,18 @@ endif()
 
 # ===== Board target selection =====
 # Selects which src/targets/*.h pin/resource header is active (see
-# src/targets/target.h). "generic" = baseline board (no external PA
-# stage). Add new boards under src/targets/ and a matching branch here.
-set(TARGET_BOARD "GENERIC" CACHE STRING "Board target: GENERIC, GENERIC_VTX_PA_RTC76401")
+# src/targets/target.h).
+#   GENERIC                 -> no PA of any kind (RTC6705 only, if BUILD_VARIANT includes VTX)
+#   GENERIC_VTX_PA           -> baseline PA (DAC1_OUT2 bias, VDET on PB11)
+#   GENERIC_VTX_PA_RTC76401  -> RTC76401 external PA
+set(TARGET_BOARD "GENERIC" CACHE STRING "Board target: GENERIC, GENERIC_VTX_PA, GENERIC_VTX_PA_RTC76401")
 
 if(TARGET_BOARD STREQUAL "GENERIC_VTX_PA_RTC76401")
     message(STATUS "Building for board target: GENERIC_VTX_PA_RTC76401 (RTC76401 external PA)")
     add_compile_definitions(TARGET_BOARD_VTX_PA_RTC76401)
+elseif(TARGET_BOARD STREQUAL "GENERIC_VTX_PA")
+    message(STATUS "Building for board target: GENERIC_VTX_PA (baseline PA)")
+    add_compile_definitions(TARGET_BOARD_VTX_PA)
 elseif(NOT TARGET_BOARD STREQUAL "GENERIC")
     message(FATAL_ERROR "Unknown TARGET_BOARD: ${TARGET_BOARD}")
 endif()

@@ -1,18 +1,30 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /**
- * targets/generic.h — baseline board pin/resource definitions.
+ * targets/generic_vtx_pa.h — generic board plus the baseline PA stage
+ * (DAC1_OUT2 bias on PA5, VDET on PB11/ADC1, no separate PA-enable GPIO).
  *
- * No PA feature of any kind (USE_PA is never defined here) -- suitable
- * for a board with an RTC6705 but no PA stage to control. For boards
- * with a PA, see targets/generic_vtx_pa.h (baseline PA) or
- * targets/generic_vtx_pa_rtc76401.h (RTC76401 external PA).
+ * This is targets/generic.h's pin layout with the PA_GENERIC feature
+ * (and USE_PA) turned on. Compare with targets/generic_vtx_pa_rtc76401.h,
+ * which instead turns on PA_RTC76401 (different PA type: separate enable
+ * GPIO, VDET on ADC2 via PA4).
  */
-#ifndef TARGET_GENERIC_H
-#define TARGET_GENERIC_H
+#ifndef TARGET_GENERIC_VTX_PA_H
+#define TARGET_GENERIC_VTX_PA_H
+
+/* Feature flags. Downstream code (adc.c, rf_pa.c, ...) gates on these,
+ * never on a target/board name -- see targets/target.h.
+ *   USE_PA      -- this board has *some* PA stage needing bias/enable/
+ *                  detector control. Set by every concrete PA feature
+ *                  (PA_GENERIC here, PA_RTC76401 in the other header).
+ *   PA_GENERIC  -- this board's specific PA type: DAC1_OUT2 bias (PA5),
+ *                  VDET on PB11/ADC1, no separate PA-enable GPIO. */
+#define PA_GENERIC
+#define USE_PA
 
 // see adc.c - adc_init()
 typedef enum {
   ADC_CH_RESERVED = 0, // reserved
+  ADC_CH_PA_VDET, // rf pa vdet signal
   ADC_CH_TEMP, // internal temperature sensor
   ADC_CH_VREF_INT, // internal VREFINT
   ADC_CH_COUNT
@@ -40,7 +52,7 @@ typedef enum {
 #define COMP3_OUT_SYNC_EXT_TRIGGER_GPIO_Port GPIOB
 
 //
-// VTX support (RTC6705, no PA)
+// VTX + PA support
 //
 
 // RTC6705 is driven by software, but using the same pins that would be used if it was driven in hardware.
@@ -64,6 +76,9 @@ typedef enum {
 #define ADC_RESERVED_Pin LL_GPIO_PIN_1
 #define ADC_RESERVED_GPIO_Port GPIOB
 #define ADC_RESERVED_Channel LL_ADC_CHANNEL_12
+#define ADC_PA_VDET_Pin LL_GPIO_PIN_11
+#define ADC_PA_VDET_GPIO_Port GPIOB
+#define ADC_PA_VDET_Channel LL_ADC_CHANNEL_14
 
 //
 // Reserved pins for future features
@@ -85,8 +100,12 @@ typedef enum {
 #define FDCAN1_RX_Pin LL_GPIO_PIN_8
 #define FDCAN1_RX_GPIO_Port GPIOB
 
+// RF PA VBIAS: DAC1_OUT2 controls the VBIAS voltage.
+#define RF_VBIAS_DAC1_OUT2_Pin LL_GPIO_PIN_5
+#define RF_VBIAS_DAC1_OUT2_GPIO_Port GPIOA
+
 // USER_KEY only used in GPIO init code, currently only used by developers.
 #define USER_KEY_Pin LL_GPIO_PIN_13
 #define USER_KEY_GPIO_Port GPIOC
 
-#endif //TARGET_GENERIC_H
+#endif //TARGET_GENERIC_VTX_PA_H
