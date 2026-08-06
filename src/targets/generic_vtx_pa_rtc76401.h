@@ -19,6 +19,12 @@
 #ifndef TARGET_GENERIC_VTX_PA_RTC76401_H
 #define TARGET_GENERIC_VTX_PA_RTC76401_H
 
+/* Feature flag: code outside targets/ must gate on THIS, never on a
+ * target/board name. This header is the single place that turns it on;
+ * a future board sharing the same RTC76401 PA stage just needs to
+ * #define PA_RTC76401 in its own header too. */
+#define PA_RTC76401
+
 // see adc.c - adc_init()
 typedef enum {
   ADC_CH_RESERVED = 0, // reserved
@@ -90,8 +96,10 @@ typedef enum {
 #define RF_VBIAS_DAC1_OUT2_GPIO_Port GPIOA
 
 /* RTC76401 VREF enable (PB10) -- fast binary switch, not PWM/analog.
- * See rf_pa.c: guarded with #ifdef PA_ON_GPIO_Port, so builds against
- * targets/generic.h (no external PA stage) still compile untouched. */
+ * See rf_pa.c: code there gates on #if defined(PA_RTC76401), not on
+ * these pin macros -- PA_ON_Pin/PA_ON_GPIO_Port are only ever referenced
+ * inside that guard, so builds against targets/generic.h (no external PA
+ * stage, PA_RTC76401 undefined) never see them at all. */
 #define PA_ON_Pin LL_GPIO_PIN_10
 #define PA_ON_GPIO_Port GPIOB
 

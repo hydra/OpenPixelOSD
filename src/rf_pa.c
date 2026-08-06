@@ -98,7 +98,7 @@ void rf_pa_init(void)
      * and zeroes it). */
     LL_DAC_Enable(DAC1, LL_DAC_CHANNEL_2);
 
-#ifdef PA_ON_GPIO_Port
+#if defined(PA_RTC76401)
     LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOB); /* harmless if already on */
     LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
     GPIO_InitStruct.Pin = PA_ON_Pin;
@@ -115,11 +115,11 @@ void rf_pa_enable(bool on)
 {
     if (on) {
         dac_ch2_write_mv(g_vref_mv);
-#ifdef PA_ON_GPIO_Port
+#if defined(PA_RTC76401)
         LL_GPIO_SetOutputPin(PA_ON_GPIO_Port, PA_ON_Pin);
 #endif
     } else {
-#ifdef PA_ON_GPIO_Port
+#if defined(PA_RTC76401)
         LL_GPIO_ResetOutputPin(PA_ON_GPIO_Port, PA_ON_Pin);
 #endif
         dac_ch2_write_mv(0u);
