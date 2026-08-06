@@ -11,6 +11,7 @@
 #include "rtc6705.h"
 #include "uart.h"
 #include "usb.h"
+#include "vtx_power_levels.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -26,9 +27,11 @@ typedef struct {
     uint16_t freq[VTX_CHANNEL_COUNT];       /* ch1..ch8, MHz */
 } vtx_band_t;
 
-/* Power levels table (index -> mW). Tune for your HW */
-static const uint16_t g_power_mw[] = { 25, 100, 200, 800 };
-#define NUM_PWR (sizeof(g_power_mw)/sizeof(g_power_mw[0]))
+/* Power levels (count, mW labels, RTC6705 register, PA bias/enable) come
+ * from g_vtx_power_levels[] / g_vtx_power_level_count -- see
+ * vtx_power_levels.h. That table is defined per-target (see
+ * targets/*_power.c) since which combinations exist is a board hardware
+ * fact, not something generic here should guess at. */
 
 /* VTX bands table (letter + 8-char name + 8 channel freqs (MHz)).
  * These are standard bands used in Betaflight and iNav.
@@ -109,21 +112,6 @@ static inline bool freq_is_in_58ghz(uint16_t mhz)
 }
 
 /* -------------------- Hardware apply: RTC6705 + rf_pa ----------------------- */
-/* NOTE:
- * - RTC6705 power has coarse steps (3/7/11/13 dBm). For external PA you
- *   currently drive only VREF (enable) and use detector for telemetry.
- * - Here we only set frequency and pick a coarse internal PA level from power index.
- */
-static rtc6705_power_t map_power_to_rtc6705(uint8_t powerIndex)
-{
-    /* Simple mapping: 25mW→7dBm, 100mW→11dBm, 200/800mW→13dBm (coarse) */
-    if (powerIndex == 0) return RTC6705_PA_3dBm;
-    if (powerIndex == 1) return RTC6705_PA_7dBm;
-    if (powerIndex == 2) return RTC6705_PA_11dBm;
-    if (powerIndex == 3) return RTC6705_PA_13dBm;
-    return RTC6705_PA_13dBm;
-}
-
 static void vtx_apply_hw(const vtx_config_t *cfg)
 {
     printf("vtx_apply_hw: band=%d ch=%d freq=%d power=%d pit=%d\r\n",
@@ -134,28 +122,31 @@ static void vtx_apply_hw(const vtx_config_t *cfg)
         rtc6705_set_frequency(cfg->frequency);
     }
 
-    /* External PA enable/pitmode */
     if (cfg->pitmode) {
-        /* Set internal RTC6705 PA power */
+        /* Pit: minimum-emission state -- RTC6705 at its lowest register
+         * step, external PA (if any) fully off. */
         rtc6705_allow_power_writes(true);
         rtc6705_set_power(RTC6705_PA_3dBm);
         rtc6705_allow_power_writes(false);
 
 #if defined(USE_PA)
-        /* Pit: minimal radiation — disable external RF Power Amplifier */
-        rf_pa_set_power_level(RF_PA_PWR_OFF);
+        rf_pa_apply_level(NULL);
 #endif
-    } else {
-        /* Set internal RTC6705 PA power */
-        rtc6705_allow_power_writes(true);
-        rtc6705_set_power(map_power_to_rtc6705(cfg->power));
-        rtc6705_allow_power_writes(false);
+        return;
+    }
+
+    /* cfg->power is 0-based and already clamped to g_vtx_power_level_count
+     * in handle_msp_set_vtx_config() -- indexes g_vtx_power_levels[]
+     * directly, no separate "OFF" entry in that table. */
+    const vtx_power_level_t *lvl = &g_vtx_power_levels[cfg->power];
+
+    rtc6705_allow_power_writes(true);
+    rtc6705_set_power(lvl->rtc6705_level);
+    rtc6705_allow_power_writes(false);
 
 #if defined(USE_PA)
-        /* Set external RF Power Amplifier */
-        rf_pa_set_power_level(cfg->power+1);
+    rf_pa_apply_level(lvl);
 #endif
-    }
 }
 
 static void handle_msp_set_vtx_config(uint8_t owner, const uint8_t *payload, uint16_t data_size)
@@ -212,7 +203,7 @@ static void handle_msp_set_vtx_config(uint8_t owner, const uint8_t *payload, uin
 
     /* Clamp power index to our table */
     if (power_idx < 0) power_idx = 0;
-    if ((unsigned)power_idx >= NUM_PWR) power_idx = (int)NUM_PWR - 1;
+    if ((unsigned)power_idx >= g_vtx_power_level_count) power_idx = (int)g_vtx_power_level_count - 1;
 
     /* Update runtime config */
     g_cfg.pitmode = pitmode ? 1 : 0;
@@ -273,7 +264,7 @@ void vtx_msp_clear_table_and_set_defaults(uint8_t owner)
     uint8_t p[15] = {0};
     p[0]  = 0;                          /* idx LSB (legacy BF field, keep 0) */
     p[1]  = 0;                          /* idx MSB */
-    p[2]  = (uint8_t)(NUM_PWR);         /* power index */
+    p[2]  = (uint8_t)(g_vtx_power_level_count); /* power index */
     p[3]  = 0;                          /* pitmode (0/1) */
     p[4]  = 0;                          /* lowPowerDisarm */
     p[5]  = 0; p[6]  = 0;               /* pitModeFreq (LSB/MSB), 0 if unused */
@@ -282,7 +273,7 @@ void vtx_msp_clear_table_and_set_defaults(uint8_t owner)
     p[9]  = 0; p[10] = 0;               /* newFreq LSB/MSB, 0 => use band/channel */
     p[11] = (uint8_t)(NUM_BANDS);       /* newBandCount: BF expects "6"*/
     p[12] = VTX_CHANNEL_COUNT;          /* newChannelCount (8) */
-    p[13] = (uint8_t)(NUM_PWR);         /* newPowerCount: */
+    p[13] = (uint8_t)(g_vtx_power_level_count); /* newPowerCount: */
     p[14] = 1;                          /* vtx table should be cleared */
 
     uint8_t tx_buff[64];
@@ -305,9 +296,9 @@ void vtx_msp_clear_table_and_set_defaults(uint8_t owner)
  */
 void vtx_msp_push_power_table(uint8_t owner)
 {
-    for (uint8_t i = 0; i < NUM_PWR; i++) {
+    for (uint8_t i = 0; i < g_vtx_power_level_count; i++) {
         const uint8_t idx1 = (uint8_t)(i + 1);
-        const uint16_t mw  = g_power_mw[i];
+        const uint16_t mw  = g_vtx_power_levels[i].mW;
 
         char label[16] = {0};
         uint8_t label_len = (uint8_t)snprintf(label, sizeof(label), "%u", (unsigned)mw);

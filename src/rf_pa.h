@@ -10,50 +10,39 @@
  * an RTC6705 but no PA of any kind simply never defines USE_PA, and this
  * header then declares nothing at all -- not even empty stubs. Callers
  * (main.c, vtx_msp.c) must guard their own use of these symbols the same
- * way. */
+ * way.
+ *
+ * This file owns PA MECHANICS only (DAC bias, boost-enable GPIO, VDET
+ * read, the closed-loop trim) -- it does NOT own the power-level table.
+ * See vtx_power_levels.h for that; vtx_msp.c looks up the level for
+ * whatever index the FC selected and hands a pointer to
+ * rf_pa_apply_level(). */
 #if defined(USE_PA)
 
 #include <stdint.h>
 #include <stdbool.h>
-
-typedef enum {
-  RF_PA_PWR_OFF = 0,   // ~0 mW (PA disabled)
-  RF_PA_PWR_20mW,      // ~20 mW
-  RF_PA_PWR_100mW,     // ~100 mW
-  RF_PA_PWR_200mW,     // ~200 mW
-  RF_PA_PWR_800mW,     // ~800 mW
-  RF_PA_PWR_COUNT
-} rf_pa_power_t;
-
-/* Frequency breakpoints the calibration/detector tables are indexed
- * against (MHz). TODO: match to your actual calibration sweep points. */
-#define RF_PA_CAL_FREQ_POINTS 7
-
-typedef struct {
-    uint16_t mW;                                 // nominal target, informational only
-    bool     ext_pa_enable;                      // does this level engage the external boost PA stage (e.g. RTC76401)? no-op on boards without one (PA_GENERIC)
-    uint16_t calibration[RF_PA_CAL_FREQ_POINTS];  // DAC mV per freq breakpoint (open-loop / PID setpoint)
-    uint16_t detector[RF_PA_CAL_FREQ_POINTS];     // target raw VDET ADC reading per freq breakpoint; 0 = no closed loop for this level
-} rf_pa_cal_t;
-
-extern rf_pa_cal_t g_rf_pa_table[RF_PA_PWR_COUNT]; // index 0 (OFF) unused
+#include "vtx_power_levels.h"
 
 void rf_pa_init(void);
-/* Applies the DAC bias AND external boost PA state for the currently
- * active level (see rf_pa_set_power_level()) -- boost only asserts if
- * g_rf_pa_table[g_active_level].ext_pa_enable is true, it is NOT
- * unconditional just because a non-OFF level is active. */
-void rf_pa_enable(void);
+
+/* Applies lvl's DAC bias and boost-enable state. Pass NULL for fully off
+ * (pitmode or no VTX config received yet). Remembers lvl for
+ * rf_pa_restore()/rf_pa_loop(). */
+void rf_pa_apply_level(const vtx_power_level_t *lvl);
+
+/* Blunt full-off: boost GPIO low, DAC to its safe off point. Used for
+ * gating during a retune (see rtc6705.c) and equivalent to
+ * rf_pa_apply_level(NULL). */
 void rf_pa_disable(void);
-/* Re-applies whatever enable/disable state was last commanded via
- * rf_pa_set_power_level() -- i.e. enabled only if the active level isn't
- * RF_PA_PWR_OFF. Used by rtc6705.c to restore state after gating the PA
- * off during a retune, WITHOUT unconditionally forcing it back on. */
+
+/* Re-applies whatever level was last passed to rf_pa_apply_level() (NULL
+ * included). Used by rtc6705.c to restore state after gating the PA off
+ * during a retune, WITHOUT unconditionally forcing anything on. */
 void rf_pa_restore(void);
+
 uint16_t rf_pa_read_vdet_mv(void);
 uint16_t rf_pa_get_vref_mv(void);
 void rf_pa_set_vref_mv(uint16_t mv);
-uint16_t rf_pa_set_power_level(rf_pa_power_t level);
 
 /* Call periodically (e.g. every main-loop iteration) to run the DAC bias
  * PID loop against the active level's detector target, when it has one. */

@@ -26,10 +26,14 @@ set(TARGET_BOARD "GENERIC" CACHE STRING "Board target: GENERIC, GENERIC_VTX_PA, 
 if(TARGET_BOARD STREQUAL "GENERIC_VTX_PA_RTC76401")
     message(STATUS "Building for board target: GENERIC_VTX_PA_RTC76401 (RTC76401 external PA)")
     add_compile_definitions(TARGET_BOARD_VTX_PA_RTC76401)
+    set(TARGET_POWER_SRC ./src/targets/generic_vtx_pa_rtc76401_power.c)
 elseif(TARGET_BOARD STREQUAL "GENERIC_VTX_PA")
     message(STATUS "Building for board target: GENERIC_VTX_PA (baseline PA)")
     add_compile_definitions(TARGET_BOARD_VTX_PA)
-elseif(NOT TARGET_BOARD STREQUAL "GENERIC")
+    set(TARGET_POWER_SRC ./src/targets/generic_vtx_pa_power.c)
+elseif(TARGET_BOARD STREQUAL "GENERIC")
+    set(TARGET_POWER_SRC ./src/targets/generic_power.c)
+else()
     message(FATAL_ERROR "Unknown TARGET_BOARD: ${TARGET_BOARD}")
 endif()
 
@@ -152,7 +156,8 @@ if(BUILD_VARIANT MATCHES "(^|\\+)VTX($|\\+)")
     set(VTX_SRC
             ./src/rtc6705.c
             ./src/rf_pa.c
-            ./src/vtx_msp.c)
+            ./src/vtx_msp.c
+            ${TARGET_POWER_SRC})
 endif()
 
 if(BUILD_VARIANT MATCHES "(^|\\+)BLINKY($|\\+)")
