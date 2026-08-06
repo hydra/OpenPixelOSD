@@ -72,12 +72,22 @@ int main (void)
 #if defined(BUILD_VARIANT_VTX)
     if(rtc6705_init()) {
         printf("rtc6705 detected\r\n");
-        rtc6705_set_frequency(5880); // TODO: remove after implementing configuration saving to flash
 
 #if defined(USE_PA)
-        rf_pa_init();
-        rf_pa_set_power_level(RF_PA_PWR_20mW);
+        rf_pa_init(); // must run before rtc6705_set_frequency(): that call
+                      // gates rf_pa_disable()/rf_pa_enable() around retuning,
+                      // which need PA_ON_Pin already in output mode and
+                      // DAC1 ch2 already enabled.
 #endif
+
+        rtc6705_set_frequency(5880); // TODO: remove after implementing configuration saving to flash
+
+        // Deliberately NOT calling rf_pa_set_power_level() here. rf_pa_init()
+        // already leaves the PA disabled (DAC at 0, PA_ON_Pin low) -- it
+        // should stay that way until an actual MSP_SET_VTX_CONFIG arrives
+        // from the FC. Auto-enabling at boot with an unvalidated
+        // calibration table is how you drive RF into an unknown, possibly
+        // unsafe operating point before anyone's told it to transmit.
     }
 #endif
 

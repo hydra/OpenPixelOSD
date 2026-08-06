@@ -393,9 +393,11 @@ uint32_t rtc6705_set_frequency(uint32_t freq_mhz)
     // Wait for state stability (proxy for lock/STBY) before enabling external PA
     rtc6705_wait_state_stable(RTC6705_LOCK_STABLE_US, RTC6705_LOCK_WAIT_TIMEOUT_US);
 
-    // Re-enable external PA
+    // Restore external PA to whatever state was last commanded (may be
+    // disabled, e.g. before any MSP_SET_VTX_CONFIG has been received) --
+    // NOT an unconditional re-enable.
 #if defined(USE_PA)
-    rf_pa_enable();
+    rf_pa_restore();
 #endif
 
     g_freq_mhz_last = freq_mhz;

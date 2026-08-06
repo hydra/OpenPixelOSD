@@ -24,13 +24,32 @@ static const uint16_t g_cal_freq_mhz[RF_PA_CAL_FREQ_POINTS] = {
  * populate real VDET readings here. RAM-only: not persisted across
  * resets (this project doesn't have a flash/EEPROM module yet -- add
  * one and a read/write pair here if you want calibration to survive
- * power cycles). */
+ * power cycles).
+ *
+ * SAFETY: Q2 (SSM3J56MFV) is P-channel, source on 3V3_RF (~3.3V), so
+ * Vgs = DAC_mv - 3300. Per its datasheet, |Vgs(th)| max = 1V, and
+ * Rds(on) is already down to 480mOhm at Vgs=-2.5V (660mOhm at just
+ * -1.8V) -- i.e. it is SUBSTANTIALLY conducting well before Vgs reaches
+ * -2.5V. An earlier version of this table used 800-2400mV (Vgs -2.5V to
+ * -0.9V) for ALL four levels, which is deep in the fully-on region for
+ * every single one -- that is almost certainly what caused a large
+ * current draw the moment any non-OFF level was requested.
+ *
+ * All four levels below now default to the SAME safe starting point,
+ * 3200mV (Vgs=-100mV, comfortably above the 1V max threshold -> Q2
+ * should be at or very near cutoff). This is NOT a working calibration --
+ * every level will produce roughly the same (minimal) output until you
+ * sweep each one down individually against a real power meter, watching
+ * bench current the whole time. Move in small steps (e.g. 50mV) and
+ * expect the transition from "off" to "conducting" to happen over a
+ * fairly narrow band given how low this device's threshold is -- don't
+ * assume the useful range spans anywhere near VDD down to 0V. */
 rf_pa_cal_t g_rf_pa_table[RF_PA_PWR_COUNT] = {
     [RF_PA_PWR_OFF]   = { 0,   {0,0,0,0,0,0,0}, {0,0,0,0,0,0,0} },
-    [RF_PA_PWR_20mW]  = { 20,  {800,800,800,800,800,800,800}, {0,0,0,0,0,0,0} },
-    [RF_PA_PWR_100mW] = { 100, {1400,1400,1400,1400,1400,1400,1400}, {0,0,0,0,0,0,0} },
-    [RF_PA_PWR_200mW] = { 200, {1800,1800,1800,1800,1800,1800,1800}, {0,0,0,0,0,0,0} },
-    [RF_PA_PWR_800mW] = { 800, {2400,2400,2400,2400,2400,2400,2400}, {0,0,0,0,0,0,0} },
+    [RF_PA_PWR_20mW]  = { 20,  {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
+    [RF_PA_PWR_100mW] = { 100, {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
+    [RF_PA_PWR_200mW] = { 200, {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
+    [RF_PA_PWR_800mW] = { 800, {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
 };
 
 #ifndef PA_CONTROL_Kp
@@ -115,6 +134,13 @@ void rf_pa_init(void)
     rf_pa_disable(); // keep PA off at boot
 }
 
+/* Q2 is P-channel; DAC near VDD (Vgs~0) is OFF, DAC near 0 (Vgs~-3.3V) is
+ * the MOST conductive state it can be in -- the inverse of the "0 = off"
+ * convention this file's DAC-bias approach was originally adapted from.
+ * Getting this backwards means the "disabled" state was actually driving
+ * near-maximum bias into RTC6705's PAOUT1 continuously. */
+#define VTX_BIAS_OFF_MV 3300u
+
 void rf_pa_enable(void)
 {
     dac_ch2_write_mv(g_vref_mv);
@@ -128,7 +154,16 @@ void rf_pa_disable(void)
 #if defined(PA_RTC76401)
     LL_GPIO_ResetOutputPin(PA_ON_GPIO_Port, PA_ON_Pin);
 #endif
-    dac_ch2_write_mv(0u);
+    dac_ch2_write_mv(VTX_BIAS_OFF_MV);
+}
+
+void rf_pa_restore(void)
+{
+    if (g_active_level == RF_PA_PWR_OFF) {
+        rf_pa_disable();
+    } else {
+        rf_pa_enable();
+    }
 }
 
 void rf_pa_set_vref_mv(uint16_t mv)
