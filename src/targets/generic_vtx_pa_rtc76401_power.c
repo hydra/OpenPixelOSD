@@ -3,45 +3,49 @@
  * targets/generic_vtx_pa_rtc76401_power.c — power table for the RTC76401
  * external PA board.
  *
- * RTC76401's 29dB gain figure is small-signal (measured at Pin=-30dBm per
- * its datasheet) -- RTC6705's own four settings (+3/+7/+11/+13dBm) are
- * 33-43dB above that reference point, well past RTC76401's P1dB knee
- * (~+5dBm in, estimated from OP1dB=+33dBm output at 28dB compressed
- * gain). In practice this means:
- *   - PA off: RTC6705's own output, exact math from its register spec.
- *   - PA on: clamps toward Psat=+34dBm (2.5W) for anything at or above
- *     ~+7dBm drive -- RTC6705's 11dBm/13dBm settings buy NO additional
- *     output once the boost stage is on, just extra DC current and heat.
+ * RTC6705 register: PA5G_PW is not a gain ladder on this board. Each bit
+ * independently gates a separate physical output pin (bit0=PAOUT1,
+ * bit1=PAOUT2), standard RTC6705 architecture for boards that combine
+ * both outputs for extra power. This board only routes PAOUT1 externally
+ * (PAOUT2 is N/C), so only bit0 matters:
+ *   RTC6705_PA_3dBm  (00) and RTC6705_PA_11dBm (10) -> PAOUT1 off (identical externally)
+ *   RTC6705_PA_7dBm  (01) and RTC6705_PA_13dBm (11) -> PAOUT1 on  (identical externally)
+ * Only two RTC6705-alone states are available here, not four.
  *
- * Full combination space (8 entries: 4 RTC6705 settings x PA off/on) is
- * documented where this table was derived -- most of the 4 "PA on"
- * combinations collapse to the same ~2.5W ceiling, so exposing all 4
- * to the FC would just be duplicate/misleading entries. This table
- * instead picks the meaningfully DISTINCT points:
- *   1) 2mW    -- RTC6705 3dBm,  PA off (minimum)
- *   2) 20mW   -- RTC6705 13dBm, PA off (RTC6705's own maximum, PA fully off)
- *   3) 1400mW -- RTC6705 3dBm,  PA on  (lowest drive that still meaningfully
- *                engages gain before the knee -- least overdriven boosted option)
- *   4) 2500mW -- RTC6705 7dBm,  PA on  (lowest drive that reaches Psat --
- *                using 11dBm or 13dBm here would be pure waste)
- * There is a real, unavoidable gap between #2 and #3 (~20mW to ~1.4W) --
- * this hardware cannot produce anything in that range. The old 100mW/
- * 200mW labels never corresponded to an achievable output on this board.
+ * DAC bias (Q2/SSM3J56MFV, PAOUT1 injection): the off->on transition
+ * happens within roughly 2800-3200mV; below ~2400mV it's fully saturated
+ * and further gate drive does nothing more. The useful trim range is
+ * that ~400mV window, not the full 0-3300mV span.
  *
- * mW figures for the PA-on rows are ESTIMATES from datasheet compression
- * points, not measurements -- confirm with a real power meter. The
- * calibration[] DAC values remain at the safe 3200mV baseline (see
- * rf_pa.c's SSM3J56MFV notes) -- NOT a working calibration, still needs
- * a real bench sweep per level exactly as before.
+ * RTC76401 current draw: system total with the boost stage on is
+ * ~730-790mA depending on DAC position; the board's own PA-off baseline
+ * is ~310mA running (~251mA with the MCU halted). RTC76401's own
+ * contribution is therefore roughly 440-480mA at DAC=3200mV (Q2 off, so
+ * this is close to pure quiescent current), against a 372mA typical
+ * quiescent spec -- about 15-30% over. Current rises further as the DAC
+ * moves deeper into Q2's conduction band, consistent with RTC76401
+ * having very little headroom between small-signal gain and P1dB per
+ * its own datasheet. A 500mA-1A supply is not enough headroom to
+ * characterize this PA anywhere near real output; use one rated for at
+ * least 2-3A for further calibration work, and confirm actual VREF
+ * voltage at the RTC76401 pin under load (recommended range 2.8-3.3V)
+ * as part of that work.
+ *
+ * DAC calibration values below are structural starting points based on
+ * the current-draw transition points described above, not power-meter
+ * verified mW output -- confirm each against a real power meter before
+ * trusting the mW label.
  */
 #include "main.h"
 #include "vtx_power_levels.h"
 
 const vtx_power_level_t g_vtx_power_levels[] = {
-    { 2,    RTC6705_PA_3dBm, false, {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
-    { 20,   RTC6705_PA_13dBm, false, {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
-    { 1400, RTC6705_PA_3dBm, true,  {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
-    { 2500, RTC6705_PA_7dBm, true,  {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} },
+    { 1,   RTC6705_PA_3dBm, false, {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} }, // PAOUT1 off, Q2 off -- matches pit-mode baseline (~310mA)
+    { 2,   RTC6705_PA_3dBm, false, {2400,2400,2400,2400,2400,2400,2400}, {0,0,0,0,0,0,0} }, // PAOUT1 off, Q2 off -- with a more DC bias
+    { 5,   RTC6705_PA_7dBm, false, {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} }, // PAOUT1 on, Q2 off -- RTC6705's own drive alone, no boost
+    { 10,   RTC6705_PA_7dBm, false, {2400,2400,2400,2400,2400,2400,2400}, {0,0,0,0,0,0,0} }, // PAOUT1 on, Q2 off -- with more DC bias
+    { 82,  RTC6705_PA_3dBm, true,  {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} }, // boost on, Q2 off -- mostly RTC76401 quiescent current (~730mA total, ~440-480mA delta) -- UNVALIDATED mW, verify against power meter
+    { 150, RTC6705_PA_3dBm, true,  {2800,2800,2800,2800,2800,2800,2800}, {0,0,0,0,0,0,0} }, // boost on, Q2 starting to conduct (~790mA total, confirmed on a 500mA-1A supply) -- UNVALIDATED mW, verify against power meter
 };
 
 const uint8_t g_vtx_power_level_count = sizeof(g_vtx_power_levels) / sizeof(g_vtx_power_levels[0]);
