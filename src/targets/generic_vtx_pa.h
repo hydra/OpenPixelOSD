@@ -30,6 +30,15 @@
 #define PA_CONTROL_Kd        0.0f
 #define PA_CONTROL_OFFSET_MV 0u
 
+/* Hard bounds on what the closed loop is ever allowed to command.
+ * UNVALIDATED placeholders -- this board's bias circuit has never had a
+ * real bench sweep with the boost stage on (see targets/generic_vtx_pa_power.c),
+ * unlike the RTC76401 target's bounds which are anchored to bench data.
+ * Do not trust these until you've done that sweep. */
+#define PA_CONTROL_MV_MIN     2400u
+#define PA_CONTROL_MV_MAX     3300u
+#define PA_CONTROL_I_CLAMP_MV 300.0f
+
 // see adc.c - adc_init()
 typedef enum {
   ADC_CH_RESERVED = 0, // reserved

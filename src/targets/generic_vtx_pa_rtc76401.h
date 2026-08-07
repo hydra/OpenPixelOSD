@@ -42,6 +42,17 @@
 #define PA_CONTROL_Kd        0.0f
 #define PA_CONTROL_OFFSET_MV 0u
 
+/* Hard bounds on what the closed loop is ever allowed to command. MIN
+ * matches the lowest DAC value bench-confirmed safe WITH the boost stage
+ * on (2800mV, ~790mA total, within a 500mA-1A supply's budget) -- the
+ * loop can never ask for anything below what's actually been validated,
+ * regardless of gains or how wrong a detector[] target turns out to be.
+ * MAX is VDD (Q2 off). I_CLAMP is an unvalidated placeholder bounding
+ * the integral term's own contribution -- tune alongside the gains. */
+#define PA_CONTROL_MV_MIN     2800u
+#define PA_CONTROL_MV_MAX     3300u
+#define PA_CONTROL_I_CLAMP_MV 300.0f
+
 // see adc.c - adc_init()
 typedef enum {
   ADC_CH_RESERVED = 0, // reserved

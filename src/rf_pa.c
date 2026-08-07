@@ -40,6 +40,24 @@ static const uint16_t g_cal_freq_mhz[VTX_CAL_FREQ_POINTS] = {
 #error "PA_CONTROL_Kd not defined -- set it in your board's target header (see targets/generic_vtx_pa_rtc76401.h)"
 #endif
 
+/* Hard bounds on what the closed loop is ever allowed to command,
+ * regardless of gains or how wrong/unreachable a detector[] target turns
+ * out to be. Board-specific -- MUST match the DAC range you've actually
+ * bench-validated as safe, not just "0..3300 because that's the DAC's
+ * physical range". A missing definition is a compile error for the same
+ * reason as the gains above: there's no universally-safe default. */
+#if !defined(PA_CONTROL_MV_MIN)
+#error "PA_CONTROL_MV_MIN not defined -- set it in your board's target header, to the lowest DAC mV you've bench-confirmed safe with the boost stage on"
+#endif
+#if !defined(PA_CONTROL_MV_MAX)
+#error "PA_CONTROL_MV_MAX not defined -- set it in your board's target header"
+#endif
+#if !defined(PA_CONTROL_I_CLAMP_MV)
+#error "PA_CONTROL_I_CLAMP_MV not defined -- set it in your board's target header (bounds the integral term's own contribution, independent of the final output clamp)"
+#endif
+
+/* Additive offset, not a gain -- 0 is a genuine no-op (adds nothing), so
+ * a fallback default is fine here unlike the three gains above. */
 #ifndef PA_CONTROL_OFFSET_MV
 #define PA_CONTROL_OFFSET_MV 0u
 #endif
@@ -50,6 +68,7 @@ static const uint16_t g_cal_freq_mhz[VTX_CAL_FREQ_POINTS] = {
 #define VTX_BIAS_OFF_MV 3300u
 
 static uint16_t g_vref_mv = 0;
+static uint16_t g_cal_mv_baseline = 0; // this level's calibration[] starting DAC value -- the PID trims AROUND this, it does not compute mv from scratch
 static float    rf_detector_target = 0;
 static double   rf_detector = 0;
 static float    pa_control_i = 0;
@@ -137,6 +156,7 @@ void rf_pa_disable(void)
     g_active_level = NULL;
     rf_pa_boost_off();
     dac_ch2_write_mv(VTX_BIAS_OFF_MV);
+    g_cal_mv_baseline = VTX_BIAS_OFF_MV;
     rf_detector_target = 0;
     rf_detector = 0;
     pa_control_i = 0;
@@ -150,6 +170,7 @@ void rf_pa_apply_level(const vtx_power_level_t *lvl)
     if (!lvl) {
         rf_pa_boost_off();
         dac_ch2_write_mv(VTX_BIAS_OFF_MV);
+        g_cal_mv_baseline = VTX_BIAS_OFF_MV;
         rf_detector_target = 0;
         rf_detector = 0;
         pa_control_i = 0;
@@ -163,7 +184,8 @@ void rf_pa_apply_level(const vtx_power_level_t *lvl)
     pa_control_i = 0;
     pa_control_last_deviation = 0;
 
-    dac_ch2_write_mv(get_calibration_mv(lvl, freq));
+    g_cal_mv_baseline = get_calibration_mv(lvl, freq);
+    dac_ch2_write_mv(g_cal_mv_baseline);
 
     if (lvl->ext_pa_enable) {
         rf_pa_boost_on();
@@ -171,7 +193,7 @@ void rf_pa_apply_level(const vtx_power_level_t *lvl)
         rf_pa_boost_off();
     }
     /* if rf_detector_target != 0, rf_pa_loop() takes over trimming the
-     * DAC bias from here */
+     * DAC bias AROUND g_cal_mv_baseline from here */
 }
 
 void rf_pa_restore(void)
@@ -208,6 +230,28 @@ void debug_pa_loop(float p, float i, float d)
  * bias PID loop against the active level's detector target (mV) -- only
  * when that level has a non-zero target, i.e. it's been calibrated with
  * a real VDET reading.
+ *
+ * Control law notes:
+ *  - error = rf_detector - rf_detector_target (actual minus target, NOT
+ *    the more usual target-minus-actual). This is deliberate: Q2 is
+ *    P-channel, so LOWER DAC mV means MORE conduction means MORE output
+ *    on this board. A positive error (producing too much) needs a
+ *    HIGHER mv (less conduction); this sign convention makes a
+ *    straightforward "add the correction" PID come out correct for that
+ *    inverted relationship. Flipping it back to target-minus-actual
+ *    with additive terms reproduces the original bug.
+ *  - mv is computed as g_cal_mv_baseline + correction, NOT from the
+ *    correction terms alone. The baseline anchors the loop to a
+ *    known-reasonable starting point (this level's calibration[] value)
+ *    so a bad/unreachable target degrades to "stuck near the baseline",
+ *    not "computed from scratch, no relation to anything validated".
+ *  - Both the integral term alone and the final output are clamped to
+ *    PA_CONTROL_I_CLAMP_MV / [PA_CONTROL_MV_MIN, PA_CONTROL_MV_MAX].
+ *    Without these, an unreachable target (error never crosses zero)
+ *    causes the integral to grow without bound indefinitely -- this is
+ *    exactly what happened when detector[] targets were set above this
+ *    board's real achievable VDET ceiling: the DAC got dragged through
+ *    its full range while chasing a target it could never reach.
  */
 void rf_pa_loop(void)
 {
@@ -225,17 +269,22 @@ void rf_pa_loop(void)
     }
 
     if (rf_detector_target && (HAL_GetTick() - last_control_loop) >= 5) {
-        float deviation = rf_detector_target - rf_detector;
-        float p = deviation * PA_CONTROL_Kp;
-        pa_control_i += deviation * PA_CONTROL_Ki;
-        float d = (pa_control_last_deviation - deviation) * PA_CONTROL_Kd;
+        float error = rf_detector - rf_detector_target; // actual - target: see control law notes above
+        float p = error * PA_CONTROL_Kp;
 
-        float mv = PA_CONTROL_OFFSET_MV + pa_control_i + p + d;
-        if (mv < 0) mv = 0;
+        pa_control_i += error * PA_CONTROL_Ki;
+        if (pa_control_i > PA_CONTROL_I_CLAMP_MV)  pa_control_i = PA_CONTROL_I_CLAMP_MV;
+        if (pa_control_i < -PA_CONTROL_I_CLAMP_MV) pa_control_i = -PA_CONTROL_I_CLAMP_MV;
+
+        float d = (error - pa_control_last_deviation) * PA_CONTROL_Kd;
+
+        float mv = (float)g_cal_mv_baseline + PA_CONTROL_OFFSET_MV + pa_control_i + p + d;
+        if (mv < PA_CONTROL_MV_MIN) mv = PA_CONTROL_MV_MIN;
+        if (mv > PA_CONTROL_MV_MAX) mv = PA_CONTROL_MV_MAX;
         dac_ch2_write_mv((uint16_t)mv);
 
         last_control_loop = HAL_GetTick();
-        pa_control_last_deviation = deviation;
+        pa_control_last_deviation = error;
 
         debug_pa_loop(p, pa_control_i, d);
     }

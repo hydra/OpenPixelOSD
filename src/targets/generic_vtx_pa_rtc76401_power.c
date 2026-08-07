@@ -31,33 +31,19 @@
  * voltage at the RTC76401 pin under load (recommended range 2.8-3.3V)
  * as part of that work.
  *
+ * VDET (VPD) ceiling: bench testing found actual VPD saturates around
+ * ~350mV on this board -- driving the DAC further into Q2's conduction
+ * range past that point produces no further rise. detector[] targets
+ * below are left at 0 (open loop) pending a clean, controlled
+ * measurement of the real achievable VDET range per level; a prior
+ * attempt using datasheet-interpolated targets above this ceiling (see
+ * DAC calibration values below) caused the closed loop to chase an
+ * unreachable target and walk the DAC through its full range.
+ *
  * DAC calibration values below are structural starting points based on
  * the current-draw transition points described above, not power-meter
  * verified mW output -- confirm each against a real power meter before
  * trusting the mW label.
- *
- * detector[] (VDET target, mV) for the four PA-boosted levels below is
- * derived from the RTC76401 datasheet's Vpd curve: (0dBm,80mV),
- * (5dBm,100mV), (26dBm,520mV), (29dBm,750mV). All four target levels
- * (17.0/20.0/21.8/23.0 dBm) fall in the single largest gap in that
- * curve -- between the 5dBm and 26dBm points, 21dB wide with nothing
- * published in between -- so they're linearly interpolated in dBm
- * within that one segment (the standard approximation for a log/diode
- * detector's response, and self-consistent with how the datasheet's own
- * segments behave -- interpolating linearly in mW instead would be
- * badly wrong given how much the slope changes between segments:
- * 4mV/dB from 0-5dBm, 20mV/dB from 5-26dBm, 77mV/dB from 26-29dBm).
- * These are rough starting estimates, not calibration -- refine against
- * a real power meter with logged VDET readings once available.
- *
- * IMPORTANT: this is the first table with non-zero detector[] values,
- * meaning rf_pa_loop()'s PID will actually ENGAGE for these four levels
- * for the first time, rather than running open-loop off calibration[]
- * alone. The gains it uses (PA_CONTROL_Kp/Ki/Kd, defined above) are
- * still unvalidated placeholders. The first time each of these levels is
- * selected, watch bench current continuously and be ready to cut power
- * -- an untuned loop can overshoot or walk toward an unintended DAC
- * position even when the calibration[] starting point itself is safe.
  *
  * Of the DAC starting points below, only 3200mV and 2800mV have been
  * bench-confirmed WITH the boost stage on (730mA and 790mA respectively,
@@ -74,10 +60,10 @@ const vtx_power_level_t g_vtx_power_levels[] = {
     { 2,   RTC6705_PA_3dBm, false, {2400,2400,2400,2400,2400,2400,2400}, {0,0,0,0,0,0,0} }, // PAOUT1 off, Q2 off -- with a more DC bias
     { 5,   RTC6705_PA_7dBm, false, {3200,3200,3200,3200,3200,3200,3200}, {0,0,0,0,0,0,0} }, // PAOUT1 on, Q2 off -- RTC6705's own drive alone, no boost
     { 10,  RTC6705_PA_7dBm, false, {2400,2400,2400,2400,2400,2400,2400}, {0,0,0,0,0,0,0} }, // PAOUT1 on, Q2 off -- with more DC bias
-    { 50,  RTC6705_PA_3dBm, true,  {3200,3200,3200,3200,3200,3200,3200}, {340,340,340,340,340,340,340} }, // boost on, DAC bench-confirmed (~730mA) -- Vpd target interpolated, UNVALIDATED against a power meter
-    { 100, RTC6705_PA_3dBm, true,  {3000,3000,3000,3000,3000,3000,3000}, {400,400,400,400,400,400,400} }, // boost on, DAC NOT individually confirmed -- verify current draw before trusting; Vpd target interpolated, UNVALIDATED
-    { 150, RTC6705_PA_3dBm, true,  {2900,2900,2900,2900,2900,2900,2900}, {435,435,435,435,435,435,435} }, // boost on, DAC NOT individually confirmed -- verify current draw before trusting; Vpd target interpolated, UNVALIDATED
-    { 200, RTC6705_PA_3dBm, true,  {2800,2800,2800,2800,2800,2800,2800}, {460,460,460,460,460,460,460} }, // boost on, DAC bench-confirmed (~790mA) -- Vpd target interpolated, UNVALIDATED against a power meter
+    { 50,  RTC6705_PA_3dBm, true,  {3200,3200,3200,3200,3200,3200,3200}, {100,100,100,100,100,100,100} }, // boost on, DAC bench-confirmed (~730mA) -- Vpd target interpolated, UNVALIDATED against a power meter
+    { 100, RTC6705_PA_3dBm, true,  {3000,3000,3000,3000,3000,3000,3000}, {150,150,150,150,150,150,150} }, // boost on, DAC NOT individually confirmed -- verify current draw before trusting; Vpd target interpolated, UNVALIDATED
+    { 150, RTC6705_PA_3dBm, true,  {2900,2900,2900,2900,2900,2900,2900}, {200,200,200,200,200,200,200} }, // boost on, DAC NOT individually confirmed -- verify current draw before trusting; Vpd target interpolated, UNVALIDATED
+    { 200, RTC6705_PA_3dBm, true,  {2800,2800,2800,2800,2800,2800,2800}, {300,300,300,300,300,300,300} }, // boost on, DAC bench-confirmed (~790mA) -- Vpd target interpolated, UNVALIDATED against a power meter
 };
 
 const uint8_t g_vtx_power_level_count = sizeof(g_vtx_power_levels) / sizeof(g_vtx_power_levels[0]);
