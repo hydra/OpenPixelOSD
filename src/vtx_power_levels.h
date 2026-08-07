@@ -34,7 +34,7 @@ typedef struct {
 #if defined(USE_PA)
     bool     ext_pa_enable;                     // does this level engage the external boost PA stage (e.g. RTC76401)?
     uint16_t calibration[VTX_CAL_FREQ_POINTS];   // DAC mV per freq breakpoint (open-loop / PID setpoint)
-    uint16_t detector[VTX_CAL_FREQ_POINTS];      // target raw VDET ADC reading per freq breakpoint; 0 = open loop for this level
+    uint16_t detector[VTX_CAL_FREQ_POINTS];      // target VDET voltage in mV per freq breakpoint; 0 = open loop for this level
 #endif
 } vtx_power_level_t;
 

@@ -21,8 +21,10 @@ static const uint16_t g_cal_freq_mhz[VTX_CAL_FREQ_POINTS] = {
     5658, 5695, 5760, 5800, 5840, 5905, 5945
 };
 
+/* Gains operate on a VDET deviation in mV (rf_detector_target - rf_detector,
+ * both mV) -- TODO: tune on bench, these are still unvalidated placeholders. */
 #ifndef PA_CONTROL_Kp
-#define PA_CONTROL_Kp        0.6f   /* TODO: tune on bench */
+#define PA_CONTROL_Kp        0.6f
 #endif
 #ifndef PA_CONTROL_Ki
 #define PA_CONTROL_Ki        0.05f
@@ -184,16 +186,11 @@ uint16_t rf_pa_read_vdet_mv(void)
     return adc_read_mv(ADC_CH_PA_VDET);
 }
 
-static uint16_t rf_pa_read_vdet_raw(void)
-{
-    return adc_read_raw(ADC_CH_PA_VDET);
-}
-
 /**
  * @brief Call periodically (e.g. every main-loop iteration). Runs the DAC
- * bias PID loop against the active level's detector target -- only when
- * that level has a non-zero target, i.e. it's been calibrated with a real
- * VDET reading.
+ * bias PID loop against the active level's detector target (mV) -- only
+ * when that level has a non-zero target, i.e. it's been calibrated with
+ * a real VDET reading.
  */
 void rf_pa_loop(void)
 {
@@ -201,7 +198,7 @@ void rf_pa_loop(void)
     static uint32_t last_control_loop = 0;
 
     if ((HAL_GetTick() - last_detector_loop) >= 1) {
-        rf_detector = rf_detector * 0.99 + rf_pa_read_vdet_raw() * 0.01;
+        rf_detector = rf_detector * 0.99 + rf_pa_read_vdet_mv() * 0.01;
         last_detector_loop = HAL_GetTick();
     }
 
