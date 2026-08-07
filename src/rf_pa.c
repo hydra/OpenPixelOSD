@@ -5,8 +5,10 @@
 #include "main.h"
 #include "rf_pa.h"
 #include "vtx_msp.h"
+#include "canvas_char.h"
 #include <stdbool.h>
 #include <string.h>
+#include <stdio.h>
 
 /* Entire rest of this file is gated on USE_PA -- see rf_pa.h. On a board
  * with no PA feature enabled, this translation unit compiles to nothing. */
@@ -192,6 +194,15 @@ uint16_t rf_pa_read_vdet_mv(void)
     return adc_read_mv(ADC_CH_PA_VDET);
 }
 
+void debug_pa_loop(float p, float i, float d)
+{
+    char buffer[31];
+    snprintf(buffer, 30, "PA: %0.2f mV, %0.2f mV, %0.2f mV", rf_detector, rf_detector_target, pa_control_i);
+    canvas_char_write(0, 15, buffer, strlen(buffer));
+    snprintf(buffer, 30, "P: %0.2f, I: %0.2f, D: %0.2f", p, i, d);
+    canvas_char_write(0, 16, buffer, strlen(buffer));
+}
+
 /**
  * @brief Call periodically (e.g. every main-loop iteration). Runs the DAC
  * bias PID loop against the active level's detector target (mV) -- only
@@ -225,6 +236,8 @@ void rf_pa_loop(void)
 
         last_control_loop = HAL_GetTick();
         pa_control_last_deviation = deviation;
+
+        debug_pa_loop(p, pa_control_i, d);
     }
 }
 
