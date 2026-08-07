@@ -131,6 +131,7 @@ static void adc2_vdet_init(void)
         while (LL_ADC_IsEnabled(ADC2)) { /* wait */ }
     }
 
+    LL_ADC_DisableDeepPowerDown(ADC2); // was missing -- ADC2 defaults to deep-power-down on reset same as ADC1; without clearing it first, EnableInternalRegulator/calibration can appear to complete (ADRDY sets, no hang) while the analog front-end never actually powers up, leaving every conversion reading 0
     LL_ADC_EnableInternalRegulator(ADC2);
     for (volatile uint32_t i = 0; i < 2000; ++i) { __NOP(); } // crude ~>20 us
 
@@ -144,6 +145,22 @@ static void adc2_vdet_init(void)
     while (!LL_ADC_IsActiveFlag_ADRDY(ADC2)) { /* wait */ }
 
     LL_ADC_REG_StartConversion(ADC2);
+}
+
+/**
+ * @brief Runtime snapshot of the ADC2/VDET pipeline, for diagnosing "VDET
+ * always reads 0" style problems. dma_remaining should be actively
+ * counting down and reloading (circular mode) if conversions are really
+ * happening -- stuck at its initial value (ADC2_SEQ_LEN) means DMA never
+ * started transferring at all, regardless of what adc_enabled/adc_ready
+ * report.
+ */
+void adc2_vdet_debug_status(bool *adc_enabled, bool *adc_ready, bool *dma_enabled, uint16_t *dma_remaining)
+{
+    *adc_enabled = LL_ADC_IsEnabled(ADC2);
+    *adc_ready = LL_ADC_IsActiveFlag_ADRDY(ADC2);
+    *dma_enabled = LL_DMA_IsEnabledChannel(DMA1, LL_DMA_CHANNEL_5);
+    *dma_remaining = LL_DMA_GetDataLength(DMA1, LL_DMA_CHANNEL_5);
 }
 #endif
 

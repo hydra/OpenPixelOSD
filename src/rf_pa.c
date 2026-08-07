@@ -219,13 +219,12 @@ uint16_t rf_pa_read_vdet_mv(void)
 void debug_pa_loop(float p, float i, float d, float error, uint16_t instant_mv)
 {
     char buffer[COLUMN_SIZE+1];
-    snprintf(buffer, 30, "%0.2f RF D", (float)rf_detector);
+    snprintf(buffer, 30, "%0.2f RF D", (float)rf_detector); // was rf_detector_target -- always showed the same value as RF T, never the real filtered reading
     canvas_char_write(COLUMN_SIZE - strlen(buffer) - 1, 2, buffer, strlen(buffer));
     snprintf(buffer, 30, "%0.2f RF T", rf_detector_target);
     canvas_char_write(COLUMN_SIZE - strlen(buffer) - 1, 3, buffer, strlen(buffer));
-    snprintf(buffer, 30, "%u RF I", instant_mv);
+    snprintf(buffer, 30, "%u RF I", instant_mv); // instantaneous adc_read_mv(), NOT the slow EMA filter -- if this is also stuck near 0 while a multimeter shows real voltage at the pin, the problem is in the ADC2 path itself, not the filter lagging
     canvas_char_write(COLUMN_SIZE - strlen(buffer) - 1, 4, buffer, strlen(buffer));
-
     snprintf(buffer, 30, "P %0.2f", p);
     canvas_char_write(0, 2, buffer, strlen(buffer));
     snprintf(buffer, 30, "I %0.2f", i);
@@ -234,6 +233,14 @@ void debug_pa_loop(float p, float i, float d, float error, uint16_t instant_mv)
     canvas_char_write(0, 4, buffer, strlen(buffer));
     snprintf(buffer, 30, "E %0.2f", error);
     canvas_char_write(0, 5, buffer, strlen(buffer));
+
+#if defined(USE_ADC2)
+    bool adc_en, adc_rdy, dma_en;
+    uint16_t dma_remain;
+    adc2_vdet_debug_status(&adc_en, &adc_rdy, &dma_en, &dma_remain);
+    snprintf(buffer, 30, "ADC%d RDY%d DMA%d N%u", adc_en, adc_rdy, dma_en, dma_remain);
+    canvas_char_write(COLUMN_SIZE - strlen(buffer) - 1, 5, buffer, strlen(buffer));
+#endif
 }
 
 /**

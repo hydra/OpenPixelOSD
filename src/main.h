@@ -21,6 +21,8 @@
 #include "stm32g4xx_ll_gpio.h"
 #include "stm32g4xx_ll_adc.h"
 
+#include <stdbool.h>
+
 #ifndef GIT_TAG
 #define GIT_TAG "-.-.-"
 #endif /* GIT_TAG */
@@ -67,6 +69,9 @@ uint16_t adc_read_raw(adc_ch_t ch);
 uint16_t adc_read_mv(adc_ch_t ch);
 uint32_t adc_read_vdda_mv(void);
 float adc_read_mcu_temp_c(void);
+#if defined(USE_ADC2)
+void adc2_vdet_debug_status(bool *adc_enabled, bool *adc_ready, bool *dma_enabled, uint16_t *dma_remaining);
+#endif
 
 void DAC1_Init(void);
 void DAC3_Init(void);
@@ -84,9 +89,5 @@ void TIM17_Init(void);
 
 void COMP3_Init(void);
 void COMP4_Init(void);
-
-/* Canvas character functions */
-EXEC_RAM void canvas_char_clean(void);
-EXEC_RAM void canvas_char_draw_complete(void);
 
 #endif /* __MAIN_H */
