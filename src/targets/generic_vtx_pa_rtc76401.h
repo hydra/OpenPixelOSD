@@ -49,7 +49,7 @@
  * regardless of gains or how wrong a detector[] target turns out to be.
  * MAX is VDD (Q2 off). I_CLAMP is an unvalidated placeholder bounding
  * the integral term's own contribution -- tune alongside the gains. */
-#define PA_CONTROL_MV_MIN     2800u
+#define PA_CONTROL_MV_MIN     2400u
 #define PA_CONTROL_MV_MAX     3300u
 #define PA_CONTROL_I_CLAMP_MV 300.0f
 

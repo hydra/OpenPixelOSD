@@ -216,13 +216,16 @@ uint16_t rf_pa_read_vdet_mv(void)
     return adc_read_mv(ADC_CH_PA_VDET);
 }
 
-void debug_pa_loop(float p, float i, float d, float error)
+void debug_pa_loop(float p, float i, float d, float error, uint16_t instant_mv)
 {
     char buffer[COLUMN_SIZE+1];
-    snprintf(buffer, 30, "%0.2f RF D", rf_detector);
+    snprintf(buffer, 30, "%0.2f RF D", (float)rf_detector);
     canvas_char_write(COLUMN_SIZE - strlen(buffer) - 1, 2, buffer, strlen(buffer));
     snprintf(buffer, 30, "%0.2f RF T", rf_detector_target);
     canvas_char_write(COLUMN_SIZE - strlen(buffer) - 1, 3, buffer, strlen(buffer));
+    snprintf(buffer, 30, "%u RF I", instant_mv);
+    canvas_char_write(COLUMN_SIZE - strlen(buffer) - 1, 4, buffer, strlen(buffer));
+
     snprintf(buffer, 30, "P %0.2f", p);
     canvas_char_write(0, 2, buffer, strlen(buffer));
     snprintf(buffer, 30, "I %0.2f", i);
@@ -294,7 +297,7 @@ void rf_pa_loop(void)
         last_control_loop = HAL_GetTick();
         pa_control_last_deviation = error;
 
-        debug_pa_loop(p, pa_control_i, d, error);
+        debug_pa_loop(p, pa_control_i, d, error, rf_pa_read_vdet_mv());
     }
 }
 
