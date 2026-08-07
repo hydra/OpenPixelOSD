@@ -22,16 +22,22 @@ static const uint16_t g_cal_freq_mhz[VTX_CAL_FREQ_POINTS] = {
 };
 
 /* Gains operate on a VDET deviation in mV (rf_detector_target - rf_detector,
- * both mV) -- TODO: tune on bench, these are still unvalidated placeholders. */
-#ifndef PA_CONTROL_Kp
-#define PA_CONTROL_Kp        0.6f
+ * both mV). Board-specific -- each USE_PA target header (e.g.
+ * targets/generic_vtx_pa_rtc76401.h) MUST define all three; there's no
+ * value that's a genuine no-op for a PID gain (Kp=1 still very much
+ * drives the loop, and Kp=Ki=Kd=0 is really just "silently disabled"
+ * wearing a different hat) -- so a missing definition is a compile
+ * error rather than a silently-inherited default. */
+#if !defined(PA_CONTROL_Kp)
+#error "PA_CONTROL_Kp not defined -- set it in your board's target header (see targets/generic_vtx_pa_rtc76401.h)"
 #endif
-#ifndef PA_CONTROL_Ki
-#define PA_CONTROL_Ki        0.05f
+#if !defined(PA_CONTROL_Ki)
+#error "PA_CONTROL_Ki not defined -- set it in your board's target header (see targets/generic_vtx_pa_rtc76401.h)"
 #endif
-#ifndef PA_CONTROL_Kd
-#define PA_CONTROL_Kd        0.0f
+#if !defined(PA_CONTROL_Kd)
+#error "PA_CONTROL_Kd not defined -- set it in your board's target header (see targets/generic_vtx_pa_rtc76401.h)"
 #endif
+
 #ifndef PA_CONTROL_OFFSET_MV
 #define PA_CONTROL_OFFSET_MV 0u
 #endif

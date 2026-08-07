@@ -21,6 +21,15 @@
 #define PA_GENERIC
 #define USE_PA
 
+/* rf_pa.c's DAC-bias PID loop gains, operating on a VDET deviation in mV.
+ * Unvalidated placeholders -- tune on the bench against this board's
+ * actual bias/detector circuit once detector[] targets are populated in
+ * targets/generic_vtx_pa_power.c. */
+#define PA_CONTROL_Kp        0.6f
+#define PA_CONTROL_Ki        0.05f
+#define PA_CONTROL_Kd        0.0f
+#define PA_CONTROL_OFFSET_MV 0u
+
 // see adc.c - adc_init()
 typedef enum {
   ADC_CH_RESERVED = 0, // reserved
