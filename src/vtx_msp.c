@@ -30,7 +30,7 @@ typedef struct {
 /* Power levels (count, mW labels, RTC6705 register, PA bias/enable) come
  * from g_vtx_power_levels[] / g_vtx_power_level_count -- see
  * vtx_power_levels.h. That table is defined per-target (see
- * targets/*_power.c) since which combinations exist is a board hardware
+ * `*_power.c` in `targets`) since which combinations exist is a board hardware
  * fact, not something generic here should guess at. */
 
 /* VTX bands table (letter + 8-char name + 8 channel freqs (MHz)).
