@@ -8,6 +8,7 @@
 #include "usb.h"
 #include "video_gen.h"
 #include "video_overlay.h"
+#include "canvas_char.h"
 
 #if defined(BUILD_VARIANT_VTX)
 #include "rtc6705.h"
