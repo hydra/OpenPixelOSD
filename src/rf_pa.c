@@ -234,6 +234,9 @@ void debug_pa_loop(float p, float i, float d, float error, uint16_t instant_mv)
     snprintf(buffer, 30, "E %0.2f", error);
     canvas_char_write(0, 5, buffer, strlen(buffer));
 
+    snprintf(buffer, 30, "DAC %u", rf_pa_get_vref_mv());
+    canvas_char_write(0, 6, buffer, strlen(buffer));
+
 #if defined(USE_ADC2)
     bool adc_en, adc_rdy, dma_en;
     uint16_t dma_remain;
