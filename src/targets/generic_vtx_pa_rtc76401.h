@@ -51,7 +51,7 @@
  * the integral term's own contribution -- tune alongside the gains. */
 #define PA_CONTROL_MV_MIN     2400u
 #define PA_CONTROL_MV_MAX     3300u
-#define PA_CONTROL_I_CLAMP_MV 300.0f
+#define PA_CONTROL_I_CLAMP_MV 400.0f
 
 // see adc.c - adc_init()
 typedef enum {
